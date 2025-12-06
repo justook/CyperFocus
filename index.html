@@ -675,6 +675,23 @@
         .action-btn:hover { background: rgba(255,255,255,0.2); color: #fff; transform: scale(1.1); }
         .action-btn.del:hover { background: rgba(255,0,80,0.2); color: var(--accent); }
         
+        .timer-btn {
+            margin-right: 5px;
+            width: auto; padding: 0 10px; border-radius: 15px;
+            font-size: 12px; font-family: monospace;
+            background: rgba(0, 242, 234, 0.1);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+        .timer-btn.running {
+            background: var(--primary); color: #000;
+            animation: pulse 1.5s infinite;
+        }
+        .task-timer-display {
+            font-size: 11px; font-family: monospace; color: var(--text-sec); margin-right: 8px;
+        }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        
         .todo-item:hover .action-btn { opacity: 1; }
 
         /* 增强功能：进度条与 Deadline */
@@ -1272,6 +1289,36 @@
             </div>
         </div>
 
+        <!-- 任务编辑模态框 (NEW) -->
+        <div id="taskEditModal" class="modal-overlay">
+            <div class="modal-content" style="max-width: 400px; text-align: left;">
+                <h3>📝 编辑任务</h3>
+                <div class="input-group">
+                    <label style="font-size:12px; color:#aaa;">任务内容</label>
+                    <input type="text" id="editTaskText">
+                </div>
+                <div class="input-group">
+                    <label style="font-size:12px; color:#aaa;">截止时间</label>
+                    <input type="datetime-local" id="editTaskDeadline">
+                </div>
+                <div class="input-group" id="editContributionGroup">
+                    <label style="font-size:12px; color:#aaa;">进度占比 (%)</label>
+                    <input type="number" id="editTaskContribution" min="0" max="100">
+                </div>
+                <div class="input-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="editTaskDaily" style="width: auto;">
+                    <label for="editTaskDaily" style="font-size:14px; color:#fff; cursor: pointer;">设为每日任务</label>
+                </div>
+                
+                <input type="hidden" id="editTaskId">
+                
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <button class="btn-primary" style="flex: 1;" onclick="saveTaskEdit()">保存</button>
+                    <button class="btn-sec" style="flex: 1;" onclick="closeTaskEditModal()">取消</button>
+                </div>
+            </div>
+        </div>
+
         <!-- 4. 右侧栏 -->
         <div class="extra-content">
             <div class="card music-card" id="musicCard">
@@ -1412,10 +1459,18 @@
                         <span class="toggle-label">已完成任务沉底</span>
                         <label class="switch"><input type="checkbox" id="chk-autoMoveDone" onchange="toggleAutoMoveDone()"><span class="slider"></span></label>
                     </div>
-                    <!-- New Setting -->
                     <div class="toggle-row">
-                        <span class="toggle-label">每日任务每天自动重置</span>
+                        <span class="toggle-label">每日任务自动重置</span>
                         <label class="switch"><input type="checkbox" id="chk-dailyTaskEnable" onchange="toggleDailyTasks()"><span class="slider"></span></label>
+                    </div>
+                    <!-- New Settings for Task Edit & Timer -->
+                    <div class="toggle-row">
+                        <span class="toggle-label">任务编辑 (双击)</span>
+                        <label class="switch"><input type="checkbox" id="chk-enableTaskEdit" onchange="toggleTaskFeatures()"><span class="slider"></span></label>
+                    </div>
+                    <div class="toggle-row">
+                        <span class="toggle-label">任务计时功能</span>
+                        <label class="switch"><input type="checkbox" id="chk-enableTaskTimer" onchange="toggleTaskFeatures()"><span class="slider"></span></label>
                     </div>
                 </div>
 
@@ -1504,7 +1559,7 @@
                     <div class="config-header">关于</div>
                     <div style="text-align:center; margin-top:40px;">
                         <h2 style="color:#fff; font-family:'Courier New', monospace;">CyberFocus</h2>
-                        <p style="color:var(--primary); font-size:18px;">v0.6.1</p>
+                        <p style="color:var(--primary); font-size:18px;">v0.6.2</p>
                         <p style="color:#aaa; font-size:12px; margin-top:20px;">Designed for Productivity & Aesthetics.</p>
                     </div>
                 </div>
@@ -1534,7 +1589,9 @@
         showDate: true,
         showLunar: false,
         autoMoveDone: false, 
-        enableDailyTasks: true, // 新增：是否开启每日任务重置
+        enableDailyTasks: true, 
+        enableTaskEdit: true, // 新增：是否开启双击编辑
+        enableTaskTimer: true, // 新增：是否开启任务计时
         amapKey: 'c0a1a7a74be675ec71f73f3be7463166', // 默认Key
         trendSources: ['weibo'], // 默认只有微博
         inspirationMode: 'saying', // 'saying' | 'answerbook'
@@ -1549,7 +1606,7 @@
             weiboCard: true,
             newsCard: true 
         },
-        pomoStats: { // 新增：番茄钟统计显示配置
+        pomoStats: { 
             today: true,
             month: true,
             year: true,
@@ -1608,6 +1665,9 @@
 
         // 7. 更新统计显示
         applyPomoStatsVisibility();
+        
+        // 8. 重绘列表以应用任务功能开关
+        renderList();
     }
 
     function updateConfigInputs() {
@@ -1634,6 +1694,9 @@
         document.getElementById('chk-lunar').checked = appConfig.showLunar;
         document.getElementById('chk-autoMoveDone').checked = appConfig.autoMoveDone; 
         document.getElementById('chk-dailyTaskEnable').checked = appConfig.enableDailyTasks; 
+        document.getElementById('chk-enableTaskEdit').checked = appConfig.enableTaskEdit;
+        document.getElementById('chk-enableTaskTimer').checked = appConfig.enableTaskTimer;
+        
         document.getElementById('cfgAmapKey').value = appConfig.amapKey;
         
         // 灵感模式回显
@@ -1737,6 +1800,13 @@
     function toggleDailyTasks() {
         appConfig.enableDailyTasks = document.getElementById('chk-dailyTaskEnable').checked;
         saveConfig();
+    }
+    
+    function toggleTaskFeatures() {
+        appConfig.enableTaskEdit = document.getElementById('chk-enableTaskEdit').checked;
+        appConfig.enableTaskTimer = document.getElementById('chk-enableTaskTimer').checked;
+        saveConfig();
+        renderList();
     }
 
     function toggleDateDisplayUI() {
@@ -1955,11 +2025,11 @@
     setInterval(updateClock, 1000);
     updateClock();
 
-    // --- 2. 待办事项逻辑 (增强版：层级 + 进度 + Deadline + 一键拆解 + 每日任务) ---
+    // --- 2. 待办事项逻辑 (增强版：层级 + 进度 + Deadline + 一键拆解 + 每日任务 + 编辑 + 计时) ---
     let currentTab = 'todo';
     let draggedItem = null; // 拖拽全局变量
 
-    // 数据结构：Item: { id, text, type: 'todo'|'day'|'week', done: bool, deadline: string, parentId: string|null, contribution: number|null, legacyProgress: number|0, isDaily: bool }
+    // 数据结构：Item: { id, text, type, done, deadline, parentId, contribution, legacyProgress, isDaily, timerStart, timeSpent, isRunning }
     let allTasks = JSON.parse(localStorage.getItem('cyberTasks')) || [];
     if (!Array.isArray(allTasks)) allTasks = [];
 
@@ -2012,6 +2082,108 @@
             localStorage.setItem('cyberLastRunDate', todayStr);
         }
     }
+
+    // --- NEW: 任务编辑逻辑 ---
+    function openTaskEditModal(id) {
+        if (!appConfig.enableTaskEdit) return;
+        const task = allTasks.find(t => t.id === id);
+        if (!task) return;
+
+        document.getElementById('editTaskId').value = id;
+        document.getElementById('editTaskText').value = task.text;
+        document.getElementById('editTaskDeadline').value = task.deadline || '';
+        
+        const contribGroup = document.getElementById('editContributionGroup');
+        if (task.parentId) {
+            contribGroup.style.display = 'flex';
+            document.getElementById('editTaskContribution').value = task.contribution || '';
+        } else {
+            contribGroup.style.display = 'none';
+        }
+        
+        document.getElementById('editTaskDaily').checked = !!task.isDaily;
+        
+        document.getElementById('taskEditModal').classList.add('show');
+    }
+
+    function closeTaskEditModal() {
+        document.getElementById('taskEditModal').classList.remove('show');
+    }
+
+    function saveTaskEdit() {
+        const id = document.getElementById('editTaskId').value;
+        const task = allTasks.find(t => t.id === id);
+        if (!task) return;
+
+        task.text = document.getElementById('editTaskText').value.trim();
+        task.deadline = document.getElementById('editTaskDeadline').value;
+        
+        if (task.parentId) {
+            const val = document.getElementById('editTaskContribution').value;
+            task.contribution = val ? parseInt(val) : null;
+        }
+        
+        task.isDaily = document.getElementById('editTaskDaily').checked;
+
+        saveData();
+        renderList();
+        closeTaskEditModal();
+    }
+
+    // --- NEW: 任务计时逻辑 ---
+    window.toggleTaskTimer = function(id, event) {
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
+        
+        const task = allTasks.find(t => t.id === id);
+        if (!task) return;
+
+        if (task.isRunning) {
+            // 停止
+            const now = Date.now();
+            const sessionDuration = Math.floor((now - task.timerStart) / 1000);
+            task.timeSpent = (task.timeSpent || 0) + sessionDuration;
+            task.isRunning = false;
+            task.timerStart = null;
+        } else {
+            // 开始 (单任务单计时，可选：暂停其他任务)
+            task.timerStart = Date.now();
+            task.isRunning = true;
+            task.timeSpent = task.timeSpent || 0;
+        }
+        saveData();
+        renderList();
+    }
+
+    function formatDuration(seconds) {
+        if (!seconds) return "0s";
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        if (h > 0) return `${h}h ${m}m`;
+        if (m > 0) return `${m}m ${s}s`;
+        return `${s}s`;
+    }
+
+    // 全局计时器刷新 (每秒更新 UI 显示，不写库)
+    setInterval(() => {
+        if (!appConfig.enableTaskTimer) return;
+        
+        const runningTasks = allTasks.filter(t => t.isRunning && t.type === currentTab);
+        if (runningTasks.length === 0) return;
+
+        runningTasks.forEach(task => {
+            const displayEl = document.getElementById(`timer-display-${task.id}`);
+            if (displayEl) {
+                const currentSession = Math.floor((Date.now() - task.timerStart) / 1000);
+                const total = (task.timeSpent || 0) + currentSession;
+                displayEl.innerText = formatDuration(total);
+            }
+        });
+    }, 1000);
+
 
     // 暴露函数给 window，确保 HTML onclick 属性可以访问
     window.deleteTask = function(id, event) {
@@ -2086,6 +2258,15 @@
         if (task.done && children.length > 0) {
             // 简单处理：自动将所有未完成的子任务标记为完成
             children.forEach(c => c.done = true);
+        }
+        
+        // 联动逻辑 2: 如果任务完成且正在计时，停止计时
+        if (task.done && task.isRunning) {
+             const now = Date.now();
+             const sessionDuration = Math.floor((now - task.timerStart) / 1000);
+             task.timeSpent = (task.timeSpent || 0) + sessionDuration;
+             task.isRunning = false;
+             task.timerStart = null;
         }
         
         saveData();
@@ -2311,9 +2492,30 @@
             li.dataset.id = item.id; // 用于排序识别
             li.setAttribute('ondragstart', 'handleDragStart(event)');
             li.setAttribute('ondragend', 'handleDragEnd(event)');
+            
+            // --- 双击编辑 (New) ---
+            if (appConfig.enableTaskEdit) {
+                li.ondblclick = (e) => { e.stopPropagation(); openTaskEditModal(item.id); };
+                li.title = "双击编辑任务";
+            }
 
             // 针对周任务，显示“添加到今日”按钮
             const showAddToDayBtn = (item.type === 'week');
+            
+            // 计时器显示 (New)
+            let timerHtml = '';
+            if (appConfig.enableTaskTimer && !item.done) {
+                const currentSession = item.isRunning ? Math.floor((Date.now() - item.timerStart) / 1000) : 0;
+                const totalTime = (item.timeSpent || 0) + currentSession;
+                timerHtml = `
+                    <span id="timer-display-${item.id}" class="task-timer-display">${formatDuration(totalTime)}</span>
+                    <button class="timer-btn ${item.isRunning ? 'running' : ''}" onclick="toggleTaskTimer('${item.id}', event)">
+                        <i class="ph-bold ${item.isRunning ? 'ph-pause' : 'ph-play'}"></i>
+                    </button>
+                `;
+            } else if (appConfig.enableTaskTimer && item.done && item.timeSpent) {
+                 timerHtml = `<span class="task-timer-display">耗时: ${formatDuration(item.timeSpent)}</span>`;
+            }
 
             li.innerHTML = `
                 <div class="item-main">
@@ -2328,6 +2530,7 @@
                     </div>
                     
                     <div class="item-actions">
+                        ${timerHtml}
                         ${showAddToDayBtn ? `
                             <span class="action-btn" title="一键添加到今日计划" onclick="addToDay('${item.id}', event)">
                                 <i class="ph-bold ph-arrow-elbow-down-right"></i>
@@ -2394,7 +2597,10 @@
             parentId: parentSelect.value || null,
             contribution: contributionInput.value ? parseInt(contributionInput.value) : null,
             legacyProgress: 0,
-            isDaily: isDailyInput.checked // New
+            isDaily: isDailyInput.checked,
+            timerStart: null,
+            timeSpent: 0,
+            isRunning: false
         };
         
         allTasks.unshift(newTask);
